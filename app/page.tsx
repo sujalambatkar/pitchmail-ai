@@ -681,7 +681,17 @@ function BulkMode({ onRowDone }: { onRowDone: () => void }) {
   const [fileName, setFileName] = useState("");
   const [fileNote, setFileNote] = useState("");
   const [running, setRunning] = useState(false);
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const stopRef = useRef(false);
+
+  const toggleExpanded = (i: number) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i);
+      else next.add(i);
+      return next;
+    });
+  };
 
   const handleFile = async (file: File) => {
     const text = await file.text();
@@ -916,7 +926,7 @@ function BulkMode({ onRowDone }: { onRowDone: () => void }) {
                   onClick={downloadResults}
                   className={secondaryButtonClass}
                 >
-                  Download results CSV ({doneCount} of {rows.length})
+                  Export all as CSV ({doneCount} of {rows.length})
                 </button>
               )}
             </div>
@@ -957,58 +967,131 @@ function BulkMode({ onRowDone }: { onRowDone: () => void }) {
             <p className="px-5 py-10 text-center text-sm italic text-zinc-300">
               Upload a CSV to see your prospects here…
             </p>
-          ) : (
+          ) : doneCount > 0 ? (
+            <p className="border-t border-zinc-50 px-5 pt-3 text-xs text-zinc-400">
+              Click a finished row to read and copy its email — no
+              spreadsheet needed.
+            </p>
+          ) : null}
+
+          {rows.length > 0 && (
             <ul className="max-h-[560px] divide-y divide-zinc-50 overflow-y-auto">
-              {rows.map((r, i) => (
-                <li key={i} className="flex items-start gap-3 px-5 py-3">
-                  <span className="mt-0.5 shrink-0">
-                    {r.status === "done" ? (
-                      <span className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-100">
-                        <svg width="9" height="9" viewBox="0 0 16 16" fill="none">
+              {rows.map((r, i) => {
+                const isOpen = r.status === "done" && expanded.has(i);
+                return (
+                  <li key={i}>
+                    <button
+                      type="button"
+                      onClick={() => r.status === "done" && toggleExpanded(i)}
+                      className={`flex w-full items-start gap-3 px-5 py-3 text-left transition-colors ${
+                        r.status === "done" ? "cursor-pointer hover:bg-zinc-50" : "cursor-default"
+                      }`}
+                    >
+                      <span className="mt-0.5 shrink-0">
+                        {r.status === "done" ? (
+                          <span className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-100">
+                            <svg width="9" height="9" viewBox="0 0 16 16" fill="none">
+                              <path
+                                d="M13.5 4.5L6 12L2.5 8.5"
+                                stroke="#059669"
+                                strokeWidth="2.2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
+                            </svg>
+                          </span>
+                        ) : r.status === "error" ? (
+                          <span
+                            className="flex h-4 w-4 items-center justify-center rounded-full bg-red-100 text-[10px] font-bold text-red-600"
+                            title={r.error}
+                          >
+                            !
+                          </span>
+                        ) : r.status === "working" ? (
+                          <span className="text-zinc-400">
+                            <Spinner />
+                          </span>
+                        ) : (
+                          <span className="block h-4 w-4 rounded-full border border-zinc-200" />
+                        )}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-zinc-900">
+                          {r.name || `Row ${i + 1}`}
+                        </p>
+                        <p className="truncate text-xs text-zinc-400">
+                          {r.status === "done"
+                            ? r.subject
+                            : r.status === "error"
+                              ? r.error
+                              : r.linkedinText}
+                        </p>
+                      </div>
+                      {r.status === "done" && (
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 16 16"
+                          fill="none"
+                          className={`mt-0.5 shrink-0 text-zinc-400 transition-transform duration-150 ${
+                            isOpen ? "rotate-90" : ""
+                          }`}
+                        >
                           <path
-                            d="M13.5 4.5L6 12L2.5 8.5"
-                            stroke="#059669"
-                            strokeWidth="2.2"
+                            d="M6 3.5L10.5 8L6 12.5"
+                            stroke="currentColor"
+                            strokeWidth="1.6"
                             strokeLinecap="round"
                             strokeLinejoin="round"
                           />
                         </svg>
-                      </span>
-                    ) : r.status === "error" ? (
-                      <span
-                        className="flex h-4 w-4 items-center justify-center rounded-full bg-red-100 text-[10px] font-bold text-red-600"
-                        title={r.error}
-                      >
-                        !
-                      </span>
-                    ) : r.status === "working" ? (
-                      <span className="text-zinc-400">
-                        <Spinner />
-                      </span>
-                    ) : (
-                      <span className="block h-4 w-4 rounded-full border border-zinc-200" />
+                      )}
+                    </button>
+
+                    {isOpen && (
+                      <div className="animate-fade-up space-y-3 border-t border-zinc-50 bg-zinc-50/40 px-5 py-4">
+                        <div>
+                          <div className="mb-1 flex items-center justify-between">
+                            <span className="text-[11px] font-semibold uppercase tracking-wide text-zinc-400">
+                              Subject
+                            </span>
+                            <CopyButton text={r.subject ?? ""} label="subject" />
+                          </div>
+                          <p className="text-sm font-medium text-zinc-900">
+                            {r.subject}
+                          </p>
+                        </div>
+                        <div>
+                          <div className="mb-1 flex items-center justify-between">
+                            <span className="text-[11px] font-semibold uppercase tracking-wide text-zinc-400">
+                              Email
+                            </span>
+                            <CopyButton text={r.email ?? ""} label="email body" />
+                          </div>
+                          <p className="whitespace-pre-wrap text-sm leading-relaxed text-zinc-700">
+                            {r.email}
+                          </p>
+                        </div>
+                        <div>
+                          <div className="mb-1 flex items-center justify-between">
+                            <span className="text-[11px] font-semibold uppercase tracking-wide text-zinc-400">
+                              Follow-up
+                            </span>
+                            <CopyButton text={r.followup ?? ""} label="follow-up" />
+                          </div>
+                          <p className="whitespace-pre-wrap text-sm leading-relaxed text-zinc-700">
+                            {r.followup}
+                          </p>
+                        </div>
+                        <CopyButton
+                          text={`Subject: ${r.subject}\n\n${r.email}\n\n---\n\nFollow-up:\n${r.followup}`}
+                          label="entire email and follow-up"
+                        />
+                      </div>
                     )}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-zinc-900">
-                      {r.name || `Row ${i + 1}`}
-                    </p>
-                    <p className="truncate text-xs text-zinc-400">
-                      {r.status === "done"
-                        ? r.subject
-                        : r.status === "error"
-                          ? r.error
-                          : r.linkedinText}
-                    </p>
-                  </div>
-                  {r.status === "done" && r.email && (
-                    <CopyButton
-                      text={`Subject: ${r.subject}\n\n${r.email}`}
-                      label={`email for ${r.name || `row ${i + 1}`}`}
-                    />
-                  )}
-                </li>
-              ))}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </section>

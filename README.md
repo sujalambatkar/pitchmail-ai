@@ -1,17 +1,20 @@
 # PitchMail AI
 
-A cold email personalizer for freelancers and SDRs. Paste what you offer and a prospect's LinkedIn profile text, pick a tone, and get a personalized subject line, email body, and follow-up email — streamed in real time.
+A cold email engine built specifically for Indian freelancers and agencies pitching clients in the US and Europe. Paste what you offer and a prospect's LinkedIn profile text, pick a tone, and get personalized cold emails tuned for the India-to-US dynamic: credibility-first copy, natural US business English, and timezone-aware positioning.
 
 ## Features
 
-- Single-page UI, no routing or auth required
-- Streams the AI response token-by-token using the Vercel AI SDK
-- Splits the streamed output live into three sections: subject, email body, and follow-up
+- Single email mode: personalized subject lines, email body, and follow-up, streamed token-by-token
+- A/B subject line variants: every generation produces three subject lines taking different angles, each with an AI-estimated open rate (clearly labeled as an estimate, not real send data)
+- Bulk CSV mode: upload a CSV of up to 50 LinkedIn profiles, generate personalized emails for each with live per-row progress, and download the results as a CSV
+- Reply analyzer: paste a prospect's reply, get a sentiment read (Positive / Neutral / Objection / Rejection) and a ready-to-send response drafted for you
+- HubSpot import: paste a HubSpot private app token to pull contacts directly into the form (token stays in your browser, proxied per-request, never stored server-side)
+- Niche-tuned prompts: counters offshore-quality skepticism with specificity instead of defensiveness, avoids Indian-English formalisms, mentions timezone overlap only when it strengthens the pitch
 - Three tone presets: Professional, Friendly, Direct
-- Per-card copy-to-clipboard buttons
-- Skeleton loading states while generating
+- Per-card and per-variant copy-to-clipboard buttons
+- Skeleton loading states and live stream parsing
 - Daily generation counter persisted in localStorage
-- Session limit (5 generations) with an upgrade banner
+- Session limit (5 generations) with an upgrade banner (Pro coming soon at Rs. 499/mo)
 
 ## Tech Stack
 
@@ -25,67 +28,89 @@ A cold email personalizer for freelancers and SDRs. Paste what you offer and a p
 ## System Architecture
 
 ```
-                     +---------------------------------------------+
-                     |                  Browser                     |
-                     |                                               |
-                     |  app/page.tsx                                 |
-                     |  - Input form (offer, LinkedIn text, tone)    |
-                     |  - useCompletion() from @ai-sdk/react         |
-                     |  - Live stream parser (splits on "---")       |
-                     |  - localStorage: daily generation counter     |
-                     +---------------------------------------------+
-                                       |
-                                       | POST /api/generate
-                                       | { offer, linkedinText, tone }
-                                       v
-                     +---------------------------------------------+
-                     |        Next.js Route Handler (server)        |
-                     |        app/api/generate/route.ts              |
-                     |                                               |
-                     |  1. Validate request body (400 if invalid)    |
-                     |  2. Build prompt via lib/prompts.ts           |
-                     |  3. Call streamText() with Groq provider      |
-                     |  4. Return streaming response                 |
-                     +---------------------------------------------+
-                                       |
-                                       | Streamed completion
-                                       v
-                     +---------------------------------------------+
-                     |               Groq API                       |
-                     |        model: llama-3.3-70b-versatile         |
-                     |                                               |
-                     |  Output format:                               |
-                     |    SUBJECT: ...                               |
-                     |    ---                                        |
-                     |    EMAIL: ...                                 |
-                     |    ---                                        |
-                     |    FOLLOWUP: ...                              |
-                     +---------------------------------------------+
+                  +-----------------------------------------------------+
+                  |                      Browser                         |
+                  |                                                       |
+                  |  app/page.tsx — three workspaces (kept mounted):      |
+                  |                                                       |
+                  |  [Single]          [Bulk CSV]         [Reply]         |
+                  |  useCompletion     client-side        useCompletion   |
+                  |  streams from      worker pool (2     streams from    |
+                  |  /api/generate     concurrent) calls  /api/reply      |
+                  |                    /api/bulk per row                  |
+                  |                                                       |
+                  |  lib/parse.ts — shared stream/section parsers         |
+                  |  lib/csv.ts — CSV parse + serialize (RFC-4180-ish)    |
+                  |  localStorage — daily counter, HubSpot token          |
+                  +-----------------------------------------------------+
+                       |              |               |            |
+                       v              v               v            v
+            +----------------+ +-------------+ +-------------+ +------------------+
+            | /api/generate  | | /api/bulk   | | /api/reply  | | /api/crm/hubspot |
+            | streamText,    | | generateText| | streamText, | | CORS proxy to    |
+            | returns data   | | returns     | | returns data| | HubSpot contacts |
+            | stream         | | parsed JSON | | stream      | | API (token pass- |
+            +----------------+ +-------------+ +-------------+ | through, never   |
+                       |              |               |        | stored)          |
+                       v              v               v        +------------------+
+                  +-----------------------------------------+         |
+                  |               Groq API                  |         v
+                  |      model: llama-3.3-70b-versatile      |  +---------------+
+                  |                                          |  | HubSpot CRM   |
+                  |  Generation format:    Reply format:     |  | /crm/v3/      |
+                  |    SUBJECTS:             SENTIMENT: ...  |  | objects/      |
+                  |    1. ... | 54%          ---             |  | contacts      |
+                  |    2. ... | 47%          RESPONSE: ...   |  +---------------+
+                  |    3. ... | 41%                          |
+                  |    ---                                   |
+                  |    EMAIL: ...                            |
+                  |    ---                                   |
+                  |    FOLLOWUP: ...                         |
+                  +-----------------------------------------+
 ```
 
-### Request flow
+### Request flows
 
-1. The user fills in the offer and LinkedIn text and selects a tone in `app/page.tsx`.
-2. On clicking Generate, `useCompletion` sends a POST request to `/api/generate`.
-3. The route handler in `app/api/generate/route.ts` validates the payload and rejects incomplete or malformed requests with a 400 response.
-4. `lib/prompts.ts` builds the system and user prompts, instructing the model to extract details from the LinkedIn text and return a strictly formatted response (subject, email, follow-up separated by `---`).
-5. The route calls `streamText` from the Vercel AI SDK using the Groq provider and streams the response back to the client as it is generated.
-6. On the client, the streamed text is parsed in real time: text before the first `---` populates the subject card, text between the first and second `---` populates the email card, and text after the second `---` populates the follow-up card.
-7. Each card shows a shimmer skeleton until its section starts streaming in, and exposes a Copy button to copy just that section.
-8. After a successful generation, the session counter increments (capped at 5 per session, after which the generate button is disabled and an upgrade banner is shown) and the daily counter in localStorage is updated.
+Single email:
+
+1. The user fills in the offer and LinkedIn text (typed, or imported from HubSpot) and selects a tone.
+2. `useCompletion` POSTs to `/api/generate`, which validates the payload, builds the niche-tuned prompt from `lib/prompts.ts`, and streams the Groq response back.
+3. The client parses the stream live: the SUBJECTS section renders as three A/B/C variant rows with estimated open rates (best variant highlighted), the EMAIL section fills the body card, and the FOLLOWUP section fills the follow-up card.
+
+Bulk CSV:
+
+1. The user uploads a CSV (`name`, `linkedin_text` columns; header detection is flexible and a template is downloadable). Rows are parsed client-side by `lib/csv.ts` and capped at 50.
+2. A pool of two concurrent workers POSTs each row to `/api/bulk`, which generates non-streaming via `generateText`, parses the model output server-side, and returns `{ subjects, email, followup }` as JSON. Two workers keeps throughput reasonable without tripping Groq rate limits.
+3. Each row shows live status (pending / working / done / failed); failed rows are retried on re-run. Results download as a CSV with the best subject variant, email, follow-up, and per-row status.
+
+Reply analyzer:
+
+1. The user pastes the prospect's reply (and optionally the original email) and picks a tone.
+2. `useCompletion` POSTs to `/api/reply`, which streams a sentiment classification (Positive / Neutral / Objection / Rejection) plus a one-line reading, then a drafted response, parsed live into two cards.
+
+HubSpot import:
+
+1. The user pastes a HubSpot private app token (needs the `crm.objects.contacts.read` scope). The token is kept in localStorage only.
+2. `/api/crm/hubspot` proxies the request to HubSpot's contacts API (the browser cannot call HubSpot directly due to CORS), passing the token through without storing it, and returns a simplified contact list.
+3. Clicking a contact composes its name, title, company, and email into the profile textarea.
 
 ## Project Structure
 
 ```
 app/
-  page.tsx               Single-page UI: form, tone selector, output cards
-  layout.tsx             Root layout, font setup
-  globals.css            Tailwind base styles and custom utilities
+  page.tsx                   Single-page UI: mode switcher + three workspaces
+  layout.tsx                 Root layout, font setup
+  globals.css                Tailwind base styles and custom utilities
   api/
-    generate/route.ts    Streaming API endpoint that calls Groq
+    generate/route.ts        Streaming endpoint for single email mode
+    bulk/route.ts            Non-streaming JSON endpoint, one bulk row per call
+    reply/route.ts           Streaming endpoint for the reply analyzer
+    crm/hubspot/route.ts     CORS proxy for HubSpot contact import
 lib/
-  prompts.ts             System prompt and user prompt builder
-.env.local.example       Template for required environment variables
+  prompts.ts                 Niche-tuned system prompts and prompt builders
+  parse.ts                   Shared parsers for streamed/complete model output
+  csv.ts                     Minimal CSV parser and serializer
+.env.local.example           Template for required environment variables
 ```
 
 ## Getting Started
@@ -94,6 +119,7 @@ lib/
 
 - Node.js 18 or later
 - A Groq API key from https://console.groq.com/keys
+- Optional: a HubSpot private app token with the `crm.objects.contacts.read` scope, for contact import
 
 ### Setup
 
@@ -120,7 +146,7 @@ Open http://localhost:3000 in your browser. If port 3000 is already in use, Next
 
 ### POST /api/generate
 
-Request body:
+Streams a single email generation.
 
 ```json
 {
@@ -130,17 +156,51 @@ Request body:
 }
 ```
 
-`tone` must be one of `Professional`, `Friendly`, or `Direct`.
+Streamed response format: `SUBJECTS: 1. ... | 54% ... --- EMAIL: ... --- FOLLOWUP: ...`
 
-Responses:
+### POST /api/bulk
 
-- `200` - streamed text response in the format `SUBJECT: ... --- EMAIL: ... --- FOLLOWUP: ...`
-- `400` - missing or invalid fields
-- `500` - server misconfiguration (for example, missing `GROQ_API_KEY`)
+Generates one bulk row, non-streaming. Same request body as `/api/generate`.
+
+Response:
+
+```json
+{
+  "subjects": [{ "text": "...", "score": 54 }],
+  "email": "...",
+  "followup": "..."
+}
+```
+
+### POST /api/reply
+
+Streams a reply analysis.
+
+```json
+{
+  "originalEmail": "optional — the email you sent",
+  "replyText": "their reply",
+  "tone": "Professional"
+}
+```
+
+Streamed response format: `SENTIMENT: Objection — ... --- RESPONSE: ...`
+
+### POST /api/crm/hubspot
+
+Proxies a contact list fetch. The token is passed through to HubSpot and never persisted.
+
+```json
+{ "token": "pat-na1-..." }
+```
+
+Response: `{ "contacts": [{ "id", "name", "title", "company", "email" }] }`
+
+All endpoints return `400` for missing or invalid fields and `500` for server misconfiguration (for example, a missing `GROQ_API_KEY`). `/api/bulk` returns `502` if the model output cannot be parsed, and `/api/crm/hubspot` returns `401` if HubSpot rejects the token.
 
 ## Privacy
 
-No data is persisted on the server. Form inputs are sent directly to the Groq API for generation and are not stored. The only client-side persistence is a daily generation counter kept in localStorage for display purposes.
+No data is persisted on the server. Form inputs, CSV rows, and prospect replies are sent directly to the Groq API for generation and are not stored. The HubSpot token lives only in the browser's localStorage and is passed through per-request. The only other client-side persistence is a daily generation counter kept in localStorage for display purposes.
 
 ## License
 

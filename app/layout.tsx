@@ -9,9 +9,9 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "PitchMail AI — Cold emails that actually get replies",
+  title: "PitchMail AI — Win US clients from your inbox",
   description:
-    "Paste a LinkedIn profile, get a personalized cold email and follow-up in seconds. Built for freelancers and SDRs.",
+    "Cold email engine for Indian freelancers and agencies pitching US clients. Personalized emails, bulk CSV generation, reply analysis, and A/B subject lines — in seconds.",
 };
 
 export default function RootLayout({

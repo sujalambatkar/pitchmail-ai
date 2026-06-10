@@ -137,15 +137,98 @@ function CopyButton({ text, label }: { text: string; label: string }) {
   );
 }
 
+interface SendData {
+  to?: string;
+  subject?: string;
+  body?: string;
+}
+
+function SendButton({ to = "", subject = "", body = "", label }: SendData & { label: string }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const disabled = !subject && !body;
+
+  useEffect(() => {
+    if (!open) return;
+    const onClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, [open]);
+
+  const open_ = (url: string) => {
+    window.open(url, "_blank", "noopener,noreferrer");
+    setOpen(false);
+  };
+
+  const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(
+    to
+  )}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  const mailtoUrl = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(
+    subject
+  )}&body=${encodeURIComponent(body)}`;
+
+  return (
+    <div ref={ref} className="relative shrink-0">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        disabled={disabled}
+        aria-label={`Send ${label}`}
+        className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-2.5 py-1 text-xs font-medium text-zinc-600 transition-all duration-150 hover:border-zinc-300 hover:text-zinc-900 hover:shadow-sm active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:shadow-none"
+      >
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+          <path
+            d="M2 4.5L8 9l6-4.5M2.5 3h11a.5.5 0 0 1 .5.5v9a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-9a.5.5 0 0 1 .5-.5Z"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+        Send
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-full z-20 mt-1.5 w-44 animate-fade-up overflow-hidden rounded-lg border border-zinc-200 bg-white py-1 shadow-lg">
+          <button
+            type="button"
+            onClick={() => open_(gmailUrl)}
+            className="block w-full px-3 py-1.5 text-left text-xs font-medium text-zinc-700 transition-colors hover:bg-zinc-50"
+          >
+            Open in Gmail
+          </button>
+          <button
+            type="button"
+            onClick={() => open_(mailtoUrl)}
+            className="block w-full px-3 py-1.5 text-left text-xs font-medium text-zinc-700 transition-colors hover:bg-zinc-50"
+          >
+            Open in Mail app
+          </button>
+          {!to && (
+            <p className="border-t border-zinc-100 px-3 pt-1.5 pb-1 text-[11px] leading-relaxed text-zinc-400">
+              No recipient set — add their email to fill the &ldquo;to&rdquo;
+              field automatically.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CardShell({
   step,
   title,
   copyText,
+  send,
   children,
 }: {
   step: string;
   title: string;
   copyText: string;
+  send?: SendData;
   children: React.ReactNode;
 }) {
   return (
@@ -159,7 +242,10 @@ function CardShell({
             {title}
           </h2>
         </div>
-        <CopyButton text={copyText} label={title} />
+        <div className="flex items-center gap-2">
+          {send && <SendButton {...send} label={title} />}
+          <CopyButton text={copyText} label={title} />
+        </div>
       </header>
       <div className="px-5 py-4">{children}</div>
     </section>
@@ -443,6 +529,7 @@ function SingleMode({
 }) {
   const [offer, setOffer] = useState("");
   const [linkedinText, setLinkedinText] = useState("");
+  const [prospectEmail, setProspectEmail] = useState("");
   const [tone, setTone] = useState<Tone>("Professional");
 
   const { completion, complete, isLoading, error, setCompletion } =
@@ -475,6 +562,7 @@ function SingleMode({
   const handleReset = () => {
     setOffer("");
     setLinkedinText("");
+    setProspectEmail("");
     setTone("Professional");
     setCompletion("");
   };
@@ -520,6 +608,27 @@ function SingleMode({
                 className={textareaClass(true)}
               />
               <HubSpotImport onPick={setLinkedinText} />
+            </div>
+
+            <div>
+              <label
+                htmlFor="prospect-email"
+                className="mb-1.5 block text-sm font-medium text-zinc-900"
+              >
+                Their email{" "}
+                <span className="font-normal text-zinc-400">(optional)</span>
+              </label>
+              <input
+                id="prospect-email"
+                type="email"
+                value={prospectEmail}
+                onChange={(e) => setProspectEmail(e.target.value)}
+                placeholder="jane@acmecorp.com"
+                className={textareaClass()}
+              />
+              <p className="mt-1.5 text-xs text-zinc-400">
+                Fills the &ldquo;to&rdquo; field when you hit Send.
+              </p>
             </div>
 
             <ToneSelector value={tone} onChange={setTone} />
@@ -626,7 +735,16 @@ function SingleMode({
           )}
         </CardShell>
 
-        <CardShell step="2" title="Email body" copyText={email}>
+        <CardShell
+          step="2"
+          title="Email body"
+          copyText={email}
+          send={{
+            to: prospectEmail,
+            subject: subjects[0]?.text ?? "",
+            body: email,
+          }}
+        >
           <TextBlock
             text={email}
             isLoading={isLoading}
@@ -635,7 +753,16 @@ function SingleMode({
           />
         </CardShell>
 
-        <CardShell step="3" title="Follow-up email" copyText={followup}>
+        <CardShell
+          step="3"
+          title="Follow-up email"
+          copyText={followup}
+          send={{
+            to: prospectEmail,
+            subject: subjects[0]?.text ? `Re: ${subjects[0].text}` : "",
+            body: followup,
+          }}
+        >
           <TextBlock
             text={followup}
             isLoading={isLoading}
@@ -652,17 +779,18 @@ function SingleMode({
 
 interface BulkRow {
   name: string;
+  recipientEmail: string;
   linkedinText: string;
   status: "pending" | "working" | "done" | "error";
   subject?: string;
-  email?: string;
+  body?: string;
   followup?: string;
   error?: string;
 }
 
-const BULK_TEMPLATE = `name,linkedin_text
-Jane Doe,"VP of Sales at Acme Corp (Austin, TX). 10+ years scaling B2B revenue teams. Posts about outbound strategy."
-John Smith,"CTO at TechFlow. Ex-Google. Building developer tools for fintech. Hiring backend engineers."`;
+const BULK_TEMPLATE = `name,email,linkedin_text
+Jane Doe,jane@acmecorp.com,"VP of Sales at Acme Corp (Austin, TX). 10+ years scaling B2B revenue teams. Posts about outbound strategy."
+John Smith,john@techflow.io,"CTO at TechFlow. Ex-Google. Building developer tools for fintech. Hiring backend engineers."`;
 
 function downloadFile(filename: string, content: string, type: string) {
   const blob = new Blob([content], { type });
@@ -703,13 +831,14 @@ function BulkMode({ onRowDone }: { onRowDone: () => void }) {
       return;
     }
 
-    // Detect a header row and locate name/profile columns.
+    // Detect a header row and locate name/email/profile columns.
     const header = parsed[0].map((h) => h.toLowerCase().trim());
     const profileCol = header.findIndex((h) =>
       /linkedin|profile|about|bio|summary|text/.test(h)
     );
     const nameCol = header.findIndex((h) => /name/.test(h));
-    const hasHeader = profileCol !== -1 || nameCol !== -1;
+    const emailCol = header.findIndex((h) => /email|e-mail/.test(h));
+    const hasHeader = profileCol !== -1 || nameCol !== -1 || emailCol !== -1;
 
     const dataRows = hasHeader ? parsed.slice(1) : parsed;
     const pCol = profileCol !== -1 ? profileCol : dataRows[0]?.length === 1 ? 0 : 1;
@@ -718,6 +847,7 @@ function BulkMode({ onRowDone }: { onRowDone: () => void }) {
     const mapped: BulkRow[] = dataRows
       .map((r) => ({
         name: nCol >= 0 ? (r[nCol] ?? "").trim() : "",
+        recipientEmail: emailCol !== -1 ? (r[emailCol] ?? "").trim() : "",
         linkedinText: (r[pCol] ?? "").trim(),
         status: "pending" as const,
       }))
@@ -781,7 +911,7 @@ function BulkMode({ onRowDone }: { onRowDone: () => void }) {
           updateRow(i, {
             status: "done",
             subject: best?.text ?? "",
-            email: data.email,
+            body: data.email,
             followup: data.followup,
           });
           onRowDone();
@@ -1044,10 +1174,10 @@ function BulkMode({ onRowDone }: { onRowDone: () => void }) {
                             <span className="text-[11px] font-semibold uppercase tracking-wide text-zinc-400">
                               Email
                             </span>
-                            <CopyButton text={r.email ?? ""} label="email body" />
+                            <CopyButton text={r.body ?? ""} label="email body" />
                           </div>
                           <p className="whitespace-pre-wrap text-sm leading-relaxed text-zinc-700">
-                            {r.email}
+                            {r.body}
                           </p>
                         </div>
                         <div>
@@ -1061,10 +1191,18 @@ function BulkMode({ onRowDone }: { onRowDone: () => void }) {
                             {r.followup}
                           </p>
                         </div>
-                        <CopyButton
-                          text={`Subject: ${r.subject}\n\n${r.email}\n\n---\n\nFollow-up:\n${r.followup}`}
-                          label="entire email and follow-up"
-                        />
+                        <div className="flex items-center gap-2">
+                          <CopyButton
+                            text={`Subject: ${r.subject}\n\n${r.body}\n\n---\n\nFollow-up:\n${r.followup}`}
+                            label="entire email and follow-up"
+                          />
+                          <SendButton
+                            to={r.recipientEmail}
+                            subject={r.subject}
+                            body={r.body}
+                            label="email"
+                          />
+                        </div>
                       </div>
                     )}
                   </li>

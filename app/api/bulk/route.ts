@@ -2,6 +2,13 @@ import { createGroq } from "@ai-sdk/groq";
 import { generateText } from "ai";
 import { SYSTEM_PROMPT, buildUserPrompt, type Tone } from "@/lib/prompts";
 import { parseGeneration, parseSubjectVariants } from "@/lib/parse";
+import { getClientIp, rateLimit, rateLimitResponse } from "@/lib/rateLimit";
+import {
+  bodyTooLarge,
+  MAX_OFFER_LENGTH,
+  MAX_PROFILE_LENGTH,
+  tooLong,
+} from "@/lib/validation";
 
 export const maxDuration = 60;
 
@@ -9,6 +16,15 @@ const VALID_TONES: Tone[] = ["Professional", "Friendly", "Direct"];
 
 /** Generates one email for one bulk row and returns parsed JSON (non-streaming). */
 export async function POST(req: Request) {
+  // Bulk mode fires one request per CSV row from a 2-worker client pool, so
+  // it gets a higher ceiling than the single-generation endpoints.
+  const limit = rateLimit(`bulk:${getClientIp(req)}`, 40);
+  if (!limit.allowed) return rateLimitResponse(limit);
+
+  if (bodyTooLarge(req)) {
+    return Response.json({ error: "Request body too large" }, { status: 413 });
+  }
+
   let body: { offer?: string; linkedinText?: string; tone?: Tone };
   try {
     body = await req.json();
@@ -25,6 +41,19 @@ export async function POST(req: Request) {
     );
   }
 
+  if (typeof offer !== "string" || typeof linkedinText !== "string") {
+    return Response.json({ error: "Invalid field types" }, { status: 400 });
+  }
+
+  if (tooLong(offer, MAX_OFFER_LENGTH) || tooLong(linkedinText, MAX_PROFILE_LENGTH)) {
+    return Response.json(
+      {
+        error: `offer must be under ${MAX_OFFER_LENGTH} characters and linkedinText under ${MAX_PROFILE_LENGTH} characters`,
+      },
+      { status: 400 }
+    );
+  }
+
   if (!VALID_TONES.includes(tone)) {
     return Response.json(
       { error: "tone must be Professional, Friendly, or Direct" },
@@ -34,7 +63,7 @@ export async function POST(req: Request) {
 
   if (!process.env.GROQ_API_KEY) {
     return Response.json(
-      { error: "GROQ_API_KEY is not configured" },
+      { error: "Server is not configured correctly" },
       { status: 500 }
     );
   }
@@ -61,7 +90,10 @@ export async function POST(req: Request) {
 
     return Response.json({ subjects, email, followup });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Generation failed";
-    return Response.json({ error: message }, { status: 502 });
+    console.error("bulk route error:", err);
+    return Response.json(
+      { error: "Generation failed. Please try again." },
+      { status: 502 }
+    );
   }
 }

@@ -1428,6 +1428,29 @@ export default function Home() {
     setSessionCount((c) => c + 1);
   }, []);
 
+  const [clearedJustNow, setClearedJustNow] = useState(false);
+
+  const clearAllData = useCallback(() => {
+    if (
+      !window.confirm(
+        "This clears your daily email count and saved HubSpot token from this browser. Continue?"
+      )
+    ) {
+      return;
+    }
+
+    try {
+      localStorage.removeItem(DAILY_COUNT_KEY);
+      localStorage.removeItem(HUBSPOT_TOKEN_KEY);
+    } catch {
+      // localStorage unavailable — nothing to clear
+    }
+
+    setDailyCount(0);
+    setClearedJustNow(true);
+    window.setTimeout(() => window.location.reload(), 800);
+  }, []);
+
   const limitReached = sessionCount >= SESSION_LIMIT;
 
   return (
@@ -1551,6 +1574,21 @@ export default function Home() {
         <p className="text-center text-xs text-zinc-400">
           PitchMail AI — built for Indian freelancers &amp; agencies · Powered
           by Groq
+        </p>
+        <p className="mt-2 text-center text-xs text-zinc-400">
+          {clearedJustNow ? (
+            <span className="text-emerald-600">Data cleared.</span>
+          ) : (
+            <button
+              type="button"
+              onClick={clearAllData}
+              className="underline decoration-zinc-300 underline-offset-2 transition hover:text-zinc-600"
+            >
+              Clear my data
+            </button>
+          )}{" "}
+          — removes your daily count and saved HubSpot token from this
+          browser
         </p>
       </footer>
     </div>

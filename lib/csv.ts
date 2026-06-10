@@ -42,14 +42,3 @@ export function parseCsv(text: string): string[][] {
   if (row.some((f) => f.trim() !== "")) rows.push(row);
   return rows;
 }
-
-function escapeField(value: string): string {
-  if (/[",\n\r]/.test(value)) {
-    return `"${value.replace(/"/g, '""')}"`;
-  }
-  return value;
-}
-
-export function toCsv(rows: string[][]): string {
-  return rows.map((row) => row.map(escapeField).join(",")).join("\r\n");
-}

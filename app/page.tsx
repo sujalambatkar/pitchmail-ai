@@ -14,7 +14,7 @@ import {
   parseReplyAnalysis,
   parseSubjectVariants,
 } from "@/lib/parse";
-import { parseCsv, toCsv } from "@/lib/csv";
+import { parseCsv } from "@/lib/csv";
 
 const TONES: { value: Tone; hint: string }[] = [
   { value: "Professional", hint: "US-corporate polish, credible" },
@@ -798,19 +798,6 @@ function BulkMode({ onRowDone }: { onRowDone: () => void }) {
     setRunning(false);
   };
 
-  const downloadResults = () => {
-    const out: string[][] = [
-      ["name", "subject", "email", "followup", "status"],
-      ...rows.map((r) => [
-        r.name,
-        r.subject ?? "",
-        r.email ?? "",
-        r.followup ?? "",
-        r.status === "done" ? "ok" : `failed: ${r.error ?? "not generated"}`,
-      ]),
-    ];
-    downloadFile("pitchmail-bulk-emails.csv", toCsv(out), "text/csv");
-  };
 
   const doneCount = rows.filter((r) => r.status === "done").length;
   const errorCount = rows.filter((r) => r.status === "error").length;
@@ -918,15 +905,6 @@ function BulkMode({ onRowDone }: { onRowDone: () => void }) {
                   className={secondaryButtonClass}
                 >
                   Stop after current batch
-                </button>
-              )}
-              {(doneCount > 0 || errorCount > 0) && !running && (
-                <button
-                  type="button"
-                  onClick={downloadResults}
-                  className={secondaryButtonClass}
-                >
-                  Export all as CSV ({doneCount} of {rows.length})
                 </button>
               )}
             </div>

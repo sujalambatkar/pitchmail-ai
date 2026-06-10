@@ -577,7 +577,7 @@ function SingleMode({
       </div>
 
       {/* Output cards */}
-      <div className="flex flex-1 flex-col gap-4">
+      <div className="flex min-w-0 flex-1 flex-col gap-4">
         <CardShell
           step="1"
           title="Subject lines (A/B/C)"
@@ -917,7 +917,7 @@ function BulkMode({ onRowDone }: { onRowDone: () => void }) {
       </div>
 
       {/* Results */}
-      <div className="flex flex-1 flex-col gap-4">
+      <div className="flex min-w-0 flex-1 flex-col gap-4">
         <section className="rounded-xl border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
           <header className="flex items-center justify-between border-b border-zinc-100 px-5 py-3">
             <h2 className="text-sm font-semibold tracking-tight text-zinc-900">
@@ -1224,7 +1224,7 @@ function ReplyMode({
       </div>
 
       {/* Output */}
-      <div className="flex flex-1 flex-col gap-4">
+      <div className="flex min-w-0 flex-1 flex-col gap-4">
         <CardShell step="1" title="What their reply means" copyText={reading}>
           {isLoading && !sentiment ? (
             <SkeletonLines lines={2} />
